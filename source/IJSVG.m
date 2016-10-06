@@ -167,6 +167,51 @@ static NSColor * _baseColor = nil;
     return self;
 }
 
+- (id)initWithSVGString:(NSString *)svgString
+{
+    return [self initWithSVGString:svgString
+                               error:nil
+                            delegate:nil];
+}
+- (id)initWithSVGString:(NSString *)svgString
+             error:(NSError **)error
+{
+    return [self initWithSVGString:svgString
+                               error:error
+                            delegate:nil];
+}
+- (id)initWithSVGString:(NSString *)svgString
+          delegate:(id<IJSVGDelegate>)delegate
+{
+    return [self initWithSVGString:svgString
+                               error:nil
+                            delegate:delegate];
+}
+- (id)initWithSVGString:(NSString *)svgString
+             error:(NSError **)error
+          delegate:(id<IJSVGDelegate>)delegate
+{
+#ifndef __clang_analyzer__
+    if( ( self = [super init] ) != nil )
+    {
+        NSError * anError = nil;
+        _delegate = delegate;
+        _group = [[IJSVGParser groupForSVGString:svgString
+                                         error:&anError
+                                      delegate:nil] retain];
+        // something went wrong...
+        if( _group == nil )
+        {
+            if( error != NULL )
+                *error = anError;
+            [self release], self = nil;
+            return nil;
+        }
+    }
+#endif
+    return self;
+}
+
 - (BOOL)isFont
 {
     return [_group isFont];

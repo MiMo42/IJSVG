@@ -55,12 +55,21 @@ handleForeignObject:(IJSVGForeignObject *)foreignObject
 - (id)initWithFileURL:(NSURL *)aURL
                 error:(NSError **)error
              delegate:(id<IJSVGParserDelegate>)delegate;
+- (id)initWithSVGString:(NSString *)svgString
+                error:(NSError **)error
+             delegate:(id<IJSVGParserDelegate>)delegate;
 + (IJSVGParser *)groupForFileURL:(NSURL *)aURL;
 + (IJSVGParser *)groupForFileURL:(NSURL *)aURL
                         delegate:(id<IJSVGParserDelegate>)delegate;
 + (IJSVGParser *)groupForFileURL:(NSURL *)aURL
                            error:(NSError **)error
                         delegate:(id<IJSVGParserDelegate>)delegate;
++ (IJSVGParser *)groupForSVGString:(NSString *)svgString;
++ (IJSVGParser *)groupForSVGString:(NSString *)svgString
+                        delegate:(id<IJSVGParserDelegate>)delegate;
++ (IJSVGParser *)groupForSVGString:(NSString *)svgString
+                           error:(NSError **)error
+                        delegate:(id<IJSVGParserDelegate>)delegate;                        
 - (NSSize)size;
 - (BOOL)isFont;
 - (NSArray *)glyphs;

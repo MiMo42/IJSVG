@@ -37,6 +37,30 @@
                                          delegate:delegate] autorelease];
 }
 
++ (IJSVGParser *)groupForSVGString:(NSString *)svgString;
+{
+    return [[self class] groupForSVGString:svgString
+                                   error:nil
+                                delegate:nil];
+}
+
++ (IJSVGParser *)groupForSVGString:(NSString *)svgString
+                        delegate:(id<IJSVGParserDelegate>)delegate
+{
+    return [[self class] groupForSVGString:svgString
+                                   error:nil
+                                delegate:delegate];
+}
+
++ (IJSVGParser *)groupForSVGString:(NSString *)svgString
+                           error:(NSError **)error
+                        delegate:(id<IJSVGParserDelegate>)delegate
+{
+    return [[[[self class] alloc] initWithSVGString:svgString
+                                            error:error
+                                         delegate:delegate] autorelease];
+}
+
 - (void)dealloc
 {
     [_glyphs release], _glyphs = nil;
@@ -75,6 +99,63 @@
         anError = nil;
         @try {
             _document = [[NSXMLDocument alloc] initWithXMLString:str
+                                                         options:0
+                                                           error:&anError];
+        }
+        @catch (NSException *exception) {
+        }
+        
+        // error parsing the XML document
+        if( anError != nil )
+            return [self _handleErrorWithCode:IJSVGErrorParsingFile
+                                        error:error];
+        
+        // attempt to parse the file
+        anError = nil;
+        @try {
+            [self _parse];
+        }
+        @catch (NSException *exception) {
+            return [self _handleErrorWithCode:IJSVGErrorParsingSVG
+                                        error:error];
+        }
+        
+        
+        // check the actual parsed SVG
+        anError = nil;
+        if( ![self _validateParse:&anError] )
+        {
+            *error = anError;
+            [_document release], _document = nil;
+            [self release], self = nil;
+            return nil;
+        }
+        
+        // we have actually finished with the document at this point
+        // so just get rid of it
+        [_document release], _document = nil;
+        
+    }
+    return self;
+}
+
+- (id)initWithSVGString:(NSString *)svgString
+                error:(NSError **)error
+             delegate:(id<IJSVGParserDelegate>)delegate
+{
+    if( ( self = [super init] ) != nil )
+    {
+        NSError * anError = nil;
+
+        _delegate = delegate;
+        _glyphs = [[NSMutableArray alloc] init];
+        _parsedNodes = [[NSMutableArray alloc] init];
+        _defNodes = [[NSMutableDictionary alloc] init];
+        
+        // use NSXMLDocument as its the easiest thing to do on OSX
+        anError = nil;
+        @try {
+            _document = [[NSXMLDocument alloc] initWithXMLString:svgString
                                                          options:0
                                                            error:&anError];
         }
