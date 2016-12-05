@@ -7,6 +7,7 @@
 //
 
 #import "IJSVGParser.h"
+#import "IJSVG.h"
 
 @implementation IJSVGParser
 
@@ -67,38 +68,34 @@
     [_styleSheet release], _styleSheet = nil;
     [_parsedNodes release], _parsedNodes = nil;
     [_defNodes release], _defNodes = nil;
+    [_svgs release], _svgs = nil;
     [super dealloc];
 }
 
-- (id)initWithFileURL:(NSURL *)aURL
-                error:(NSError **)error
-             delegate:(id<IJSVGParserDelegate>)delegate
+- (id)initWithSVGString:(NSString *)string
+                  error:(NSError **)error
+               delegate:(id<IJSVGParserDelegate>)delegate
 {
     if( ( self = [super init] ) != nil )
     {
         _delegate = delegate;
+        
+        _respondsTo.handleForeignObject = [_delegate respondsToSelector:@selector(svgParser:handleForeignObject:document:)];
+        _respondsTo.shouldHandleForeignObject = [_delegate respondsToSelector:@selector(svgParser:shouldHandleForeignObject:)];
+        _respondsTo.handleSubSVG = [_delegate respondsToSelector:@selector(svgParser:foundSubSVG:withSVGString:)];
+        
         _glyphs = [[NSMutableArray alloc] init];
         _parsedNodes = [[NSMutableArray alloc] init];
         _defNodes = [[NSMutableDictionary alloc] init];
+        _svgs = [[NSMutableArray alloc] init];
         
         // load the document / file, assume its UTF8
         
-        NSError * anError = nil;
-        NSStringEncoding encoding;
-        NSString * str = [NSString stringWithContentsOfFile:aURL.path
-                                               usedEncoding:&encoding
-                                                      error:&anError];
-        
-        // error grabbing contents from the file :(
-        if( anError != nil )
-            return [self _handleErrorWithCode:IJSVGErrorReadingFile
-                                        error:error];
-        
         
         // use NSXMLDocument as its the easiest thing to do on OSX
-        anError = nil;
+        NSError * anError = nil;
         @try {
-            _document = [[NSXMLDocument alloc] initWithXMLString:str
+            _document = [[NSXMLDocument alloc] initWithXMLString:string
                                                          options:0
                                                            error:&anError];
         }
@@ -106,9 +103,10 @@
         }
         
         // error parsing the XML document
-        if( anError != nil )
+        if( anError != nil ) {
             return [self _handleErrorWithCode:IJSVGErrorParsingFile
                                         error:error];
+        }
         
         // attempt to parse the file
         anError = nil;
@@ -123,8 +121,7 @@
         
         // check the actual parsed SVG
         anError = nil;
-        if( ![self _validateParse:&anError] )
-        {
+        if( ![self _validateParse:&anError] ) {
             *error = anError;
             [_document release], _document = nil;
             [self release], self = nil;
@@ -137,6 +134,28 @@
         
     }
     return self;
+    
+}
+
+- (id)initWithFileURL:(NSURL *)aURL
+                error:(NSError **)error
+             delegate:(id<IJSVGParserDelegate>)delegate
+{
+    NSError * anError = nil;
+    NSStringEncoding encoding;
+    NSString * str = [NSString stringWithContentsOfFile:aURL.path
+                                           usedEncoding:&encoding
+                                                  error:&anError];
+    
+    // error reading file
+    if(str == nil) {
+        return [self _handleErrorWithCode:IJSVGErrorReadingFile
+                                    error:error];
+    }
+    
+    return [self initWithSVGString:str
+                             error:error
+                          delegate:delegate];
 }
 
 - (id)initWithSVGString:(NSString *)svgString
@@ -295,16 +314,14 @@
     if( [switchElements count] != 0 )
     {
         // for performance reasons, ask for this once!
-        BOOL handlesShouldHandle = [_delegate respondsToSelector:@selector(svgParser:shouldHandleForeignObject:)];
-        BOOL handlesHandle = [_delegate respondsToSelector:@selector(svgParser:handleForeignObject:document:)];
+        BOOL handlesShouldHandle = _respondsTo.shouldHandleForeignObject == 1;
+        BOOL handlesHandle = _respondsTo.handleForeignObject == 1;
         
         // we have a switch, work out what the objects are...
         switchElement = switchElements[0];
         NSXMLElement * child = nil;
-        if( _delegate != nil )
-        {
-            for( child in [switchElement children] )
-            {
+        if( _delegate != nil ) {
+            for( child in [switchElement children] ) {
                 if( [[child name] isEqualToString:@"foreignObject"] )
                 {
                     // create the temp foreign object
@@ -682,6 +699,14 @@
     
 }
 
+- (void)_cleanupSVGElementFromSpriteSheet:(NSXMLElement *)element
+{
+    NSArray * attsToRemove = @[@"x",@"y",@"opacity"];
+    for(NSString * att in attsToRemove) {
+        [element removeAttributeForName:att];
+    }
+}
+
 - (id)definedObjectForID:(NSString *)anID
                     node:(IJSVGNode *)node
                fromGroup:(IJSVGGroup *)group
@@ -713,6 +738,24 @@
     return _glyphs;
 }
 
+- (void)addSubSVG:(IJSVG *)anSVG
+{
+    [_svgs addObject:anSVG];
+}
+
+- (NSArray<IJSVG *> *)subSVGs:(BOOL)recursive
+{
+    if(recursive == NO) {
+        return _svgs;
+    }
+    NSMutableArray * svgs = [[[NSMutableArray alloc] init] autorelease];
+    for(IJSVG * anSVG in svgs) {
+        [svgs addObject:anSVG];
+        [svgs addObjectsFromArray:[anSVG subSVGs:recursive]];
+    }
+    return svgs;
+}
+
 - (void)addGlyph:(IJSVGNode *)glyph
 {
     [_glyphs addObject:glyph];
@@ -738,6 +781,49 @@
         case IJSVGNodeTypeDef:
         case IJSVGNodeTypeNotFound:
             break;
+            
+         // sub SVG
+        case IJSVGNodeTypeSVG: {
+            
+            IJSVGPath * path = [[[IJSVGPath alloc] init] autorelease];
+            path.type = aType;
+            path.name = subName;
+            path.parentNode = parentGroup;
+            
+            // grab common attributes
+            [self _parseElementForCommonAttributes:element
+                                              node:path];
+            
+            // due to this being a sub SVG, we need to remove the
+            // X and Y so its not parsed and double up when being
+            // drawn, and any other attributes that will screw up
+            [self _cleanupSVGElementFromSpriteSheet:element];
+                        
+            // work out the SVG
+            NSError * error = nil;
+            NSString * SVGString = element.XMLString;
+            IJSVG * anSVG = [[IJSVG alloc] initWithSVGString:SVGString
+                                                       error:&error
+                                                    delegate:nil];
+            
+            // handle sub SVG
+            if(error == nil && _respondsTo.handleSubSVG == 1) {
+                [_delegate svgParser:self
+                         foundSubSVG:anSVG
+                       withSVGString:SVGString];
+            }
+            
+            // any error?
+            if(anSVG != nil && error == nil) {
+                path.svg = anSVG;
+                [parentGroup addChild:path];
+                [parentGroup addDef:path];
+                
+                // make sure we add this
+                [self addSubSVG:anSVG];
+            }
+            break;
+        }
             
             // glyph
         case IJSVGNodeTypeGlyph: {
@@ -1132,8 +1218,9 @@ static NSCharacterSet * _commandCharSet = nil;
 {
     // invalid command
     
-    if( command == nil || command.length == 0 )
+    if( command == nil || command.length == 0 ) {
         return;
+    }
     
     NSCharacterSet * set = [[self class] _commandCharSet];
     NSUInteger len = [command length];
@@ -1151,8 +1238,9 @@ static NSCharacterSet * _commandCharSet = nil;
     int currentSize = defaultBufferSize;
     
     unichar * commandBuffer = NULL;
-    if( len != 0 )
+    if( len != 0 ) {
         commandBuffer = (unichar *)calloc(defaultBufferSize,sizeof(unichar));
+    }
     
     for( int i = 0; i < len; i++ )
     {

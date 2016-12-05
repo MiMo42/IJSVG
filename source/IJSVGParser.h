@@ -32,6 +32,9 @@ shouldHandleForeignObject:(IJSVGForeignObject *)foreignObject;
 - (void)svgParser:(IJSVGParser *)svg
 handleForeignObject:(IJSVGForeignObject *)foreignObject
    document:(NSXMLDocument *)document;
+- (void)svgParser:(IJSVGParser *)svg
+      foundSubSVG:(IJSVG *)subSVG
+    withSVGString:(NSString *)string;
 
 @end
 
@@ -47,10 +50,21 @@ handleForeignObject:(IJSVGForeignObject *)foreignObject
     IJSVGStyleSheet * _styleSheet;
     NSMutableArray * _parsedNodes;
     NSMutableDictionary * _defNodes;
+    NSMutableArray<IJSVG *> * _svgs;
+    
+    struct {
+        unsigned int shouldHandleForeignObject: 1;
+        unsigned int handleForeignObject: 1;
+        unsigned int handleSubSVG: 1;
+    } _respondsTo;
 }
 
 @property ( nonatomic, readonly ) NSRect viewBox;
 @property ( nonatomic, readonly ) NSSize proposedViewSize;
+
+- (id)initWithSVGString:(NSString *)string
+                  error:(NSError **)error
+               delegate:(id<IJSVGParserDelegate>)delegate;
 
 - (id)initWithFileURL:(NSURL *)aURL
                 error:(NSError **)error
@@ -73,5 +87,6 @@ handleForeignObject:(IJSVGForeignObject *)foreignObject
 - (NSSize)size;
 - (BOOL)isFont;
 - (NSArray *)glyphs;
+- (NSArray<IJSVG *> *)subSVGs:(BOOL)recursive;
 
 @end
