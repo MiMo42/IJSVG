@@ -78,14 +78,6 @@ withSVGString:(NSString *)subSVGString;
 - (id)initWithFilePathURL:(NSURL *)aURL
                     error:(NSError **)error
                  delegate:(id<IJSVGDelegate>)delegate;
-- (id)initWithSVGString:(NSString *)svgString;
-- (id)initWithSVGString:(NSString *)svgString
-             error:(NSError **)error;
-- (id)initWithSVGString:(NSString *)svgString
-          delegate:(id<IJSVGDelegate>)delegate;
-- (id)initWithSVGString:(NSString *)svgString
-             error:(NSError **)error
-          delegate:(id<IJSVGDelegate>)delegate;                    
 - (NSImage *)imageWithSize:(NSSize)aSize;
 - (NSImage *)imageWithSize:(NSSize)aSize
                      error:(NSError **)error;

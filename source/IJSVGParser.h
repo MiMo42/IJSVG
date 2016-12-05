@@ -69,9 +69,6 @@ handleForeignObject:(IJSVGForeignObject *)foreignObject
 - (id)initWithFileURL:(NSURL *)aURL
                 error:(NSError **)error
              delegate:(id<IJSVGParserDelegate>)delegate;
-- (id)initWithSVGString:(NSString *)svgString
-                error:(NSError **)error
-             delegate:(id<IJSVGParserDelegate>)delegate;
 + (IJSVGParser *)groupForFileURL:(NSURL *)aURL;
 + (IJSVGParser *)groupForFileURL:(NSURL *)aURL
                         delegate:(id<IJSVGParserDelegate>)delegate;
