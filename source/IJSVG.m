@@ -206,12 +206,12 @@ static NSColor * _baseColor = nil;
             if(error != NULL) {
                 *error = anError;
             }
-            
+
             [self release], self = nil;
             return nil;
         }
     }
-    
+
     return self;
 }
 
@@ -232,7 +232,6 @@ static NSColor * _baseColor = nil;
     return _group.viewBox;
 }
 
->>>>>>> curthard89/master
 - (BOOL)isFont
 {
     return [_group isFont];
