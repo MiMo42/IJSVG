@@ -804,6 +804,13 @@
         case IJSVGNodeTypeFont:
         case IJSVGNodeTypeMask:
         case IJSVGNodeTypeGroup: {
+            
+            // skip blank groups
+            if(aType == IJSVGNodeTypeGroup && element.childCount == 0) {
+                break;
+            }
+            
+            // create a new group
             IJSVGGroup * group = [[[IJSVGGroup alloc] init] autorelease];
             group.type = aType;
             group.name = subName;
@@ -1173,9 +1180,6 @@ static NSCharacterSet * _commandCharSet = nil;
     [command getCharacters:buffer
                      range:NSMakeRange(0, len)];
     
-    NSString * currentCommandString = nil;
-    NSString * previousCommand = nil;
-    
     int defaultBufferSize = 200;
     int currentBufferSize = 0;
     int currentSize = defaultBufferSize;
@@ -1185,28 +1189,35 @@ static NSCharacterSet * _commandCharSet = nil;
         commandBuffer = (unichar *)calloc(defaultBufferSize,sizeof(unichar));
     }
     
-    for( int i = 0; i < len; i++ )
-    {
+    IJSVGCommand * _currentCommand = nil;
+    for( int i = 0; i < len; i++ ) {
         unichar currentChar = buffer[i];
         unichar nextChar = buffer[i+1];
         BOOL atEnd = i == len-1;
         BOOL isStartCommand = [set characterIsMember:nextChar];
-        if( ( currentBufferSize + 1 ) == currentSize )
-        {
+        if( ( currentBufferSize + 1 ) == currentSize ) {
             currentSize += defaultBufferSize;
             commandBuffer = (unichar *)realloc( commandBuffer, sizeof(unichar)*currentSize);
         }
         commandBuffer[currentBufferSize++] = currentChar;
-        if( isStartCommand || atEnd )
-        {
-            currentCommandString = [NSString stringWithCharacters:commandBuffer
-                                                           length:currentBufferSize];
-            [self _parseCommandString:currentCommandString
-                      previousCommand:previousCommand
-                             intoPath:path];
-            previousCommand = [[currentCommandString copy] autorelease];
+        if( isStartCommand || atEnd ) {
+            NSString * commandString = [NSString stringWithCharacters:commandBuffer
+                                                               length:currentBufferSize];
+         
+            // previous command is actual subcommand
+            IJSVGCommand * previousCommand = [_currentCommand subCommands].lastObject;
+            IJSVGCommand * cCommand = [self _parseCommandString:commandString
+                                                previousCommand:previousCommand
+                                                       intoPath:path];
+            
+            // retain the current one
+            if(cCommand != nil) {
+                _currentCommand  = cCommand;
+            }
+            
             free(commandBuffer);
             commandBuffer = NULL;
+            
             if( !atEnd ) {
                 currentBufferSize = 0;
                 currentSize = defaultBufferSize;
@@ -1219,34 +1230,30 @@ static NSCharacterSet * _commandCharSet = nil;
     free(buffer);
 }
 
-- (void)_parseCommandString:(NSString *)string
-            previousCommand:(NSString *)previous
-                   intoPath:(IJSVGPath *)path
+- (IJSVGCommand *)_parseCommandString:(NSString *)string
+                      previousCommand:(IJSVGCommand *)previousCommand
+                             intoPath:(IJSVGPath *)path
 {
     // work out the last command - the reason this is so long is because the command
     // could be a series of the same commands, so work it out by the number of parameters
     // there is per command string
-    @autoreleasepool {
-        IJSVGCommand * preCommand = nil;
-        if( previous != nil )
-        {
-            IJSVGCommand * pre = [[[IJSVGCommand alloc] initWithCommandString:previous] autorelease];
-            preCommand = (IJSVGCommand *)[[pre subCommands] lastObject];
-        }
-        
-        // main commands
-        IJSVGCommand * command = [[[IJSVGCommand alloc] initWithCommandString:string] autorelease];
-        for( IJSVGCommand * subCommand in [command subCommands] )
-        {
-            [subCommand.commandClass runWithParams:subCommand.parameters
-                                        paramCount:subCommand.parameterCount
-                                           command:subCommand
-                                   previousCommand:preCommand
-                                              type:subCommand.type
-                                              path:path];
-            preCommand = subCommand;
-        }
+    IJSVGCommand * preCommand = nil;
+    if( previousCommand ) {
+        preCommand = previousCommand;
     }
+    
+    // main commands
+    IJSVGCommand * command = [[[IJSVGCommand alloc] initWithCommandString:string] autorelease];
+    for( IJSVGCommand * subCommand in [command subCommands] ) {
+        [subCommand.commandClass runWithParams:subCommand.parameters
+                                    paramCount:subCommand.parameterCount
+                                       command:subCommand
+                               previousCommand:preCommand
+                                          type:subCommand.type
+                                          path:path];
+        preCommand = subCommand;
+    }
+    return command;
 }
 
 - (void)_parseLine:(NSXMLElement *)element
